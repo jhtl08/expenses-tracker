@@ -1,0 +1,12 @@
+{
+  "appId": "com.canary.expensetracker",
+  "appName": "expense-tracker",
+  "webDir": "dist",
+  "plugins": {
+    "CapacitorSQLite": {
+      "iosDatabaseLocation": "Library/CapacitorDatabase",
+      "iosIsEncryption": false,
+      "androidIsEncryption": false
+    }
+  }
+}

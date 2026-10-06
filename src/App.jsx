@@ -1,0 +1,124 @@
+import { useRef, useState } from "react";
+// import { } from "./components/Components.jsx";
+import { Entry } from "./components/EntryPage.jsx";
+import { Overview } from "./components/OverviewPage.jsx";
+import { Shortcuts } from "./components/ShortcutsPage.jsx";
+
+const pages = [
+  {
+    id: "overview",
+    title: "Overview",
+    description: "View your expenses and analytics",
+  },
+  {
+    id: "entry",
+    title: "Expense Entry",
+    description: "Add a new expense",
+  },
+  {
+    id: "shortcuts",
+    title: "Shortcuts",
+    description: "Quickly add common expenses",
+  },
+];
+
+function App() {
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [currentPage, setCurrentPage] = useState(1);
+  const touchStartX = useRef(null);
+
+  const goToPage = (index) => {
+    setCurrentPage(Math.max(0, Math.min(index, pages.length - 1)));
+  };
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null) return;
+
+    const touchEndX = e.changedTouches[0].clientX;
+    const distance = touchEndX - touchStartX.current;
+
+    const threshold = window.innerWidth * 0.2;
+
+    if (Math.abs(distance) >= threshold) {
+      if (distance < 0) {
+        // Swipe left → next page
+        goToPage(currentPage + 1);
+      } else {
+        // Swipe right → previous page
+        goToPage(currentPage - 1);
+      }
+    }
+
+    touchStartX.current = null;
+  };
+
+  return (
+    <main
+      className="relative min-h-screen overflow-hidden bg-[#0d0f12] pb-20 text-white"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Pages */}
+      <div
+        className="flex h-full w-[300vw] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+        style={{
+          transform: `translateX(-${currentPage * 100}vw)`,
+        }}
+      >
+        <section className="h-full w-screen shrink-0 overflow-y-auto">
+          <Overview />
+        </section>
+
+        <section className="h-full w-screen shrink-0 overflow-y-auto">
+          <Entry
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
+          />
+        </section>
+
+        <section className="h-full w-screen shrink-0 overflow-y-auto">
+          <Shortcuts
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
+          />
+        </section>
+      </div>
+
+      {/* Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 z-50 flex w-full border-t border-white/10 bg-[#0d0f12]/95 backdrop-blur-md">
+        {pages.map((page, index) => (
+          <button
+            key={page.id}
+            onClick={() => goToPage(index)}
+            title={page.description}
+            className={`group flex flex-1 flex-col items-center justify-center gap-1 py-3 transition ${
+              currentPage === index
+                ? "bg-white/10 text-white"
+                : "text-zinc-500 hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            <span className="text-lg">
+              {page.id === "overview" && "◉"}
+              {page.id === "entry" && "＋"}
+              {page.id === "shortcuts" && "⚡"}
+            </span>
+
+            <span className="text-xs font-medium">
+              {page.id === "entry" ? "Entry" : page.title}
+            </span>
+
+            <span className="pointer-events-none absolute bottom-full mb-2 hidden w-max max-w-xs rounded-lg bg-zinc-900 px-3 py-2 text-xs text-zinc-300 shadow-lg group-hover:block">
+              {page.description}
+            </span>
+          </button>
+        ))}
+      </nav>
+    </main>
+  );
+}
+
+export default App;
