@@ -1,16 +1,17 @@
-# React + Vite
+# Expense Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A mobile expense tracking app built with React + Vite and Capacitor, targeting Android. It stores data locally via SQLite (`@capacitor-community/sqlite`) and supports persistent configuration (shortcut ordering, overview filters, user-managed categories) across runs.
 
-Currently, two official plugins are available:
+## What it does
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Track expenses with categories and dates.
+- Manage custom categories (add, modify, delete) in SQLite.
+- Persistent memory for settings like shortcut order, overview filter state, and category preferences.
+- Overview page with date-range filtering (previous month, 3 months, 1 year, custom) and visual stats (stacked bar charts per category, spend totals).
 
-## React Compiler
+## Tech stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- React + Vite
+- Capacitor (Android target)
+- SQLite via `@capacitor-community/sqlite`
+- ESLint for linting
