@@ -1,42 +1,14 @@
 import { DatePicker, Footer } from "../components/Components.jsx";
 import { useEffect, useRef, useState } from "react";
-
-const categories = [
-  "Groceries",
-  "Food",
-  "Transportation",
-  "Rent",
-  "Utilities",
-  "Other",
-];
-
-const initialShortcuts = [
-  {
-    id: 1,
-    title: "Lunch",
-    amount: 250,
-    category: "Food",
-    notes: "Usual lunch expense",
-  },
-  {
-    id: 2,
-    title: "Jeepney",
-    amount: 20,
-    category: "Transportation",
-    notes: "",
-  },
-  {
-    id: 3,
-    title: "Coffee",
-    amount: 180,
-    category: "Food",
-    notes: "Afternoon coffee",
-  },
-];
+import { CategoryManager } from "./CategoryManager.jsx";
+import { addExpense as addExpenseToDatabase } from "../database/expenses.js";
+import { getShortcuts, saveShortcuts } from "../database/shortcuts.js";
+import { useCategories, useDataVersion } from "../hooks/useDatabase.js";
+import { toISODate } from "../utils/date.js";
 
 export function Shortcuts({ selectedDate, setSelectedDate }) {
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col px-5 py-8 sm:px-8">
+    <div className="mx-auto flex min-h-full w-full max-w-xl flex-col px-5 py-8 sm:px-8">
       {/* Header */}
       <header className="mb-8 text-center">
         <p className="mb-2 text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">
@@ -51,10 +23,7 @@ export function Shortcuts({ selectedDate, setSelectedDate }) {
 
       {/* Page Content */}
       <main className="flex-1">
-        <ShortcutsCards
-          selectedDate={selectedDate}
-          setSelectedDate={setSelectedDate}
-        />
+        <ShortcutsCards selectedDate={selectedDate} />
       </main>
 
       {/* Footer */}
@@ -63,8 +32,13 @@ export function Shortcuts({ selectedDate, setSelectedDate }) {
   );
 }
 
-export function ShortcutsCards({ selectedDate, setSelectedDate }) {
-  const [shortcuts, setShortcuts] = useState(initialShortcuts);
+export function ShortcutsCards({ selectedDate }) {
+  const { categories } = useCategories();
+  const version = useDataVersion();
+  const [shortcuts, setShortcuts] = useState([]);
+  const [loadingShortcuts, setLoadingShortcuts] = useState(true);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   // Shortcut just clicked to add expense (prevent multiple clicks).
   const [isAdding, setIsAdding] = useState(false);
@@ -78,75 +52,115 @@ export function ShortcutsCards({ selectedDate, setSelectedDate }) {
   const [draggingId, setDraggingId] = useState(null);
   const [dropTargetId, setDropTargetId] = useState(null);
 
-  // Shortcut currently showing "Expense Added".
-  const [feedbackId, setFeedbackId] = useState(null);
+  // Shortcut currently showing the "Expense Added" badge.
+  const [feedback, setFeedback] = useState(null);
 
   // Long-press timer.
   const pressTimer = useRef(null);
   const wasDragging = useRef(false);
 
   /*
+   * Load the saved shortcuts from the settings table so the title, amount,
+   * category, notes and order survive app restarts. Reload when another page
+   * (for example a category rename) changes stored data.
+   */
+  useEffect(() => {
+    let active = true;
+
+    getShortcuts()
+      .then((items) => {
+        if (active) {
+          setShortcuts(items);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to load shortcuts:", error);
+        if (active) {
+          setStatusMessage("Could not load shortcuts.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoadingShortcuts(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [version]);
+
+  const persist = (next) => {
+    saveShortcuts(next).catch((error) => {
+      console.error("Failed to save shortcuts:", error);
+      setStatusMessage("Could not save shortcuts.");
+      window.setTimeout(() => setStatusMessage(""), 2500);
+    });
+  };
+
+  /*
    * Add an expense using a shortcut.
    */
-  const addExpense = (shortcut) => {
+  const addExpense = async (shortcut) => {
     if (isAdding) return;
     setIsAdding(true);
 
-    console.log("Adding expense:", {
-      date: selectedDate.toISOString().split("T")[0],
-      title: shortcut.title,
-      amount: shortcut.amount,
-      category: shortcut.category,
-      notes: shortcut.notes,
-    });
+    try {
+      await addExpenseToDatabase({
+        date: toISODate(selectedDate),
+        category: shortcut.category,
+        amount: Number(shortcut.amount),
+        notes: shortcut.notes?.trim() || shortcut.title,
+      });
 
-    // Show feedback.
-    setFeedbackId(shortcut.id);
-
-    // Hide feedback after 1.2 seconds.
-    setTimeout(() => {
-      setFeedbackId(null);
-      setIsAdding(false);
-    }, 1000);
+      setFeedback({
+        id: shortcut.id,
+        error: false,
+        message: "Expense Added",
+      });
+    } catch (error) {
+      console.error("Failed to add expense:", error);
+      setFeedback({
+        id: shortcut.id,
+        error: true,
+        message: "Could not add",
+      });
+    } finally {
+      // Hide feedback after a moment.
+      setTimeout(() => {
+        setFeedback(null);
+        setIsAdding(false);
+      }, 1000);
+    }
   };
 
   /*
    * Save an existing shortcut or create a new one.
    */
   const saveShortcut = (shortcut) => {
-    if (editingId === "new") {
-      setShortcuts((prev) => [
-        ...prev,
-        {
-          ...shortcut,
-          id: Date.now(),
-        },
-      ]);
-    } else {
-      setShortcuts((prev) =>
-        prev.map((item) =>
-          item.id === editingId
-            ? {
-                ...item,
-                ...shortcut,
-              }
-            : item,
-        ),
-      );
-    }
+    const next =
+      editingId === "new"
+        ? [...shortcuts, { ...shortcut, id: Date.now() }]
+        : shortcuts.map((item) =>
+            item.id === editingId
+              ? { ...item, ...shortcut, id: item.id }
+              : item,
+          );
 
+    setShortcuts(next);
     setEditingId(null);
+    persist(next);
   };
 
   /*
    * Delete the shortcut currently being edited.
    */
   const deleteShortcut = () => {
-    setShortcuts((prev) =>
-      prev.filter((shortcut) => shortcut.id !== editingId),
-    );
+    const next = shortcuts.filter((shortcut) => shortcut.id !== editingId);
 
+    setShortcuts(next);
     setEditingId(null);
+    persist(next);
   };
 
   /*
@@ -208,28 +222,25 @@ export function ShortcutsCards({ selectedDate, setSelectedDate }) {
     clearTimeout(pressTimer.current);
 
     if (draggingId !== null && dropTargetId !== null) {
-      setShortcuts((prev) => {
-        const fromIndex = prev.findIndex(
-          (shortcut) => shortcut.id === draggingId,
-        );
+      const fromIndex = shortcuts.findIndex(
+        (shortcut) => shortcut.id === draggingId,
+      );
 
-        const toIndex = prev.findIndex(
-          (shortcut) => shortcut.id === dropTargetId,
-        );
+      const toIndex = shortcuts.findIndex(
+        (shortcut) => shortcut.id === dropTargetId,
+      );
 
-        if (fromIndex === -1 || toIndex === -1) {
-          return prev;
-        }
-
-        const updated = [...prev];
+      if (fromIndex !== -1 && toIndex !== -1) {
+        const updated = [...shortcuts];
 
         [updated[fromIndex], updated[toIndex]] = [
           updated[toIndex],
           updated[fromIndex],
         ];
 
-        return updated;
-      });
+        setShortcuts(updated);
+        persist(updated);
+      }
     }
 
     setDraggingId(null);
@@ -251,12 +262,43 @@ export function ShortcutsCards({ selectedDate, setSelectedDate }) {
 
   return (
     <section className="w-full">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-[11px] leading-relaxed text-zinc-600">
+          Tap to add · long-press to reorder
+        </p>
+
+        <button
+          type="button"
+          onClick={() => setShowCategoryManager(true)}
+          className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+        >
+          Manage categories
+        </button>
+      </div>
+
+      {statusMessage && (
+        <p className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+          {statusMessage}
+        </p>
+      )}
+
       {/* Shortcut grid */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4">
+        {loadingShortcuts &&
+          shortcuts.length === 0 &&
+          [0, 1, 2].map((placeholder) => (
+            <div
+              key={placeholder}
+              className="min-h-44 animate-pulse rounded-xl border border-zinc-800 bg-[#111418]"
+            />
+          ))}
+
         {shortcuts.map((shortcut) => {
           const isEditing = editingId === shortcut.id;
           const isDragging = draggingId === shortcut.id;
-          const showFeedback = feedbackId === shortcut.id;
+          const cardFeedback =
+            feedback?.id === shortcut.id ? feedback : null;
+          const showFeedback = Boolean(cardFeedback);
 
           return (
             <div
@@ -297,19 +339,39 @@ export function ShortcutsCards({ selectedDate, setSelectedDate }) {
                     ? "scale-95 border-zinc-600 bg-zinc-900/60 opacity-50"
                     : "border-zinc-800 bg-[#111418] hover:-translate-y-0.5 hover:border-zinc-700 hover:bg-[#13161a]"
                 }
-                ${showFeedback ? "border-emerald-500/50 bg-emerald-500/10" : ""}
+                ${
+                  showFeedback && !cardFeedback.error
+                    ? "border-emerald-500/50 bg-emerald-500/10"
+                    : ""
+                }
+                ${
+                  cardFeedback?.error
+                    ? "border-red-500/50 bg-red-500/10"
+                    : ""
+                }
                 ${
                   editingId === shortcut.id
                     ? "cursor-default"
                     : "cursor-pointer"
                 }
+                ${
+                  dropTargetId === shortcut.id
+                    ? "ring-2 ring-zinc-500 ring-offset-2 ring-offset-[#0d0f12]"
+                    : ""
+                }
               `}
             >
-              {/* Expense added feedback */}
-              {showFeedback && (
+              {/* Add-expense feedback */}
+              {cardFeedback && (
                 <div className="pointer-events-none absolute inset-x-2 top-2 z-10 flex justify-center">
-                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300 shadow-lg backdrop-blur-sm">
-                    Expense Added
+                  <span
+                    className={`rounded-full border px-3 py-1 text-xs font-medium shadow-lg backdrop-blur-sm ${
+                      cardFeedback.error
+                        ? "border-red-500/30 bg-red-500/15 text-red-300"
+                        : "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                    }`}
+                  >
+                    {cardFeedback.message}
                   </span>
                 </div>
               )}
@@ -366,6 +428,7 @@ export function ShortcutsCards({ selectedDate, setSelectedDate }) {
 
               {isEditing ? (
                 <ShortcutEditor
+                  categories={categories}
                   shortcut={shortcut}
                   onSave={saveShortcut}
                   onDelete={deleteShortcut}
@@ -407,6 +470,7 @@ export function ShortcutsCards({ selectedDate, setSelectedDate }) {
         {editingId === "new" ? (
           <div className="min-h-44 min-w-0 overflow-hidden rounded-xl border border-dashed border-zinc-800 bg-[#0d0f12] p-3 text-zinc-100 sm:p-4">
             <ShortcutEditor
+              categories={categories}
               onSave={saveShortcut}
               onCancel={() => setEditingId(null)}
             />
@@ -430,19 +494,32 @@ export function ShortcutsCards({ selectedDate, setSelectedDate }) {
           </button>
         )}
       </div>
+
+      {showCategoryManager && (
+        <CategoryManager
+          open={showCategoryManager}
+          onClose={() => setShowCategoryManager(false)}
+        />
+      )}
     </section>
   );
 }
 
-function ShortcutEditor({ shortcut, onSave, onDelete, onCancel }) {
+function ShortcutEditor({ categories, shortcut, onSave, onDelete, onCancel }) {
   const [form, setForm] = useState(
     shortcut ?? {
       title: "",
       amount: "",
-      category: categories[0],
+      category: categories[0]?.name ?? "",
       notes: "",
     },
   );
+
+  const effectiveCategory = categories.some(
+    (category) => category.name === form.category,
+  )
+    ? form.category
+    : (categories[0]?.name ?? "");
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -456,7 +533,7 @@ function ShortcutEditor({ shortcut, onSave, onDelete, onCancel }) {
   const handleSubmit = (event) => {
     event.preventDefault();
 
-    if (!form.title.trim() || !form.amount) {
+    if (!form.title.trim() || !form.amount || !effectiveCategory) {
       return;
     }
 
@@ -464,6 +541,7 @@ function ShortcutEditor({ shortcut, onSave, onDelete, onCancel }) {
       ...form,
       title: form.title.trim(),
       amount: Number(form.amount),
+      category: effectiveCategory,
     });
   };
 
@@ -540,7 +618,7 @@ function ShortcutEditor({ shortcut, onSave, onDelete, onCancel }) {
 
         <select
           name="category"
-          value={form.category}
+          value={effectiveCategory}
           onChange={handleChange}
           className="
             w-full min-w-0
@@ -553,9 +631,11 @@ function ShortcutEditor({ shortcut, onSave, onDelete, onCancel }) {
             focus:border-zinc-600
           "
         >
+          {categories.length === 0 && <option value="">No categories</option>}
+
           {categories.map((category) => (
-            <option key={category} value={category}>
-              {category}
+            <option key={category.id} value={category.name}>
+              {category.name}
             </option>
           ))}
         </select>

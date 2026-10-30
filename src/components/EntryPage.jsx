@@ -1,70 +1,170 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FormField, DatePicker, Footer } from "../components/Components.jsx";
-import { addExpense } from "../database/expenses.js";
+import { CategoryManager } from "./CategoryManager.jsx";
+import {
+  addExpense,
+  deleteExpense,
+  getExpenses,
+  updateExpense,
+} from "../database/expenses.js";
+import { useCategories, useDataVersion } from "../hooks/useDatabase.js";
+import { formatDateLabel, parseISODate, toISODate } from "../utils/date.js";
+import { formatMoney } from "../utils/format.js";
 
-const categories = [
-  "Groceries",
-  "Food",
-  "Transportation",
-  "Rent",
-  "Utilities",
-  "Other",
-];
+const RECENT_LIMIT = 5;
 
 export function Entry({ selectedDate, setSelectedDate }) {
+  const { categories, loading: loadingCategories } = useCategories();
+  const version = useDataVersion();
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   const [message, setMessage] = useState("");
 
-  // -----------------------------
-  // Form
-  // -----------------------------
+  // Expense being edited. null means the form adds a new expense.
+  const [editingId, setEditingId] = useState(null);
 
-  const handleAddExpense = async () => {
-    if (!amount || Number(amount) <= 0) {
-      setMessage("Enter a valid amount.");
-      return;
-    }
+  // Expense waiting for a second click on Delete.
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-    try {
-      await addExpense({
-        date: selectedDate.toISOString().split("T")[0],
-        category,
-        amount: Number(amount),
-        notes,
+  const [recentExpenses, setRecentExpenses] = useState([]);
+  const [recentLoading, setRecentLoading] = useState(true);
+
+  const effectiveCategory = categories.some((item) => item.name === category)
+    ? category
+    : (categories[0]?.name ?? "");
+
+  // Latest five transactions, across every date. Reloads after any write so
+  // deleting a row immediately pulls the next latest expense into the list.
+  useEffect(() => {
+    let active = true;
+
+    getExpenses({ limit: RECENT_LIMIT })
+      .then((rows) => {
+        if (active) {
+          setRecentExpenses(rows);
+          setRecentLoading(false);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to load recent transactions:", error);
+        if (active) {
+          setRecentLoading(false);
+        }
       });
 
-      setMessage("Expense added");
+    return () => {
+      active = false;
+    };
+  }, [version]);
 
-      setAmount("");
-      setNotes("");
-
-      setTimeout(() => {
-        setMessage("");
-      }, 2500);
-    } catch (error) {
-      console.error("Failed to add expense:", error);
-      setMessage("Failed to add expense.");
-    }
+  const showMessage = (text) => {
+    setMessage(text);
+    window.setTimeout(() => setMessage(""), 2500);
   };
 
   const clearForm = () => {
     setAmount("");
     setNotes("");
-    setMessage("Form cleared.");
-    setTimeout(() => {
-      setMessage("");
-    }, 2500);
+    setEditingId(null);
+    setConfirmDeleteId(null);
   };
 
+  // -----------------------------
+  // Form
+  // -----------------------------
+
+  const handleSubmitExpense = async () => {
+    if (!amount || Number(amount) <= 0) {
+      setMessage("Enter a valid amount.");
+      return;
+    }
+
+    if (!effectiveCategory) {
+      setMessage("Add a category first.");
+      return;
+    }
+
+    const payload = {
+      date: toISODate(selectedDate),
+      category: effectiveCategory,
+      amount: Number(amount),
+      notes,
+    };
+
+    try {
+      if (editingId !== null) {
+        await updateExpense(editingId, payload);
+        showMessage("Expense updated");
+      } else {
+        await addExpense(payload);
+        showMessage("Expense added");
+      }
+
+      clearForm();
+    } catch (error) {
+      console.error("Failed to save expense:", error);
+      setMessage(error.message || "Failed to save expense.");
+    }
+  };
+
+  const startEditing = (expense) => {
+    setEditingId(expense.id);
+    setCategory(expense.category);
+    setAmount(String(expense.amount));
+    setNotes(expense.notes ?? "");
+
+    const expenseDate = parseISODate(expense.date);
+    if (expenseDate) {
+      setSelectedDate(expenseDate);
+    }
+
+    setConfirmDeleteId(null);
+    setMessage("");
+  };
+
+  const cancelEditing = () => {
+    clearForm();
+    showMessage("Edit cancelled.");
+  };
+
+  // -----------------------------
+  // Recent transactions
+  // -----------------------------
+
+  const handleDelete = async (expense) => {
+    if (confirmDeleteId !== expense.id) {
+      setConfirmDeleteId(expense.id);
+      return;
+    }
+
+    try {
+      await deleteExpense(expense.id);
+
+      if (editingId === expense.id) {
+        clearForm();
+      }
+
+      setConfirmDeleteId(null);
+      showMessage("Expense deleted");
+    } catch (error) {
+      console.error("Failed to delete expense:", error);
+      setMessage(error.message || "Failed to delete expense.");
+    }
+  };
+
+  const categoryColor = (name) =>
+    categories.find((item) => item.name.toLowerCase() === name.toLowerCase())
+      ?.color ?? "#94a3b8";
+
   return (
-    <main className="min-h-screen bg-[#0d0f12] text-white">
+    <main className="flex min-h-full flex-col bg-[#0d0f12] text-white">
       {/* --------------------------------
           Main content
       -------------------------------- */}
-      <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col px-5 py-8 sm:px-8">
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col px-5 py-8 sm:px-8">
         {/* --------------------------------
             Header
         -------------------------------- */}
@@ -82,21 +182,58 @@ export function Entry({ selectedDate, setSelectedDate }) {
             Expense form
         -------------------------------- */}
         <section className="flex flex-1 flex-col">
+          {editingId !== null && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <span className="min-w-0 truncate">
+                Editing an existing expense
+              </span>
+
+              <button
+                type="button"
+                onClick={cancelEditing}
+                className="shrink-0 rounded-lg px-2 py-1 font-medium text-amber-100/80 transition hover:bg-amber-500/15 hover:text-amber-100"
+              >
+                Cancel edit
+              </button>
+            </div>
+          )}
+
           <div className="space-y-5">
             {/* Category */}
-            <FormField label="Category">
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  Category
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCategoryManager(true)}
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+                >
+                  Manage
+                </button>
+              </div>
+
               <select
-                value={category}
+                value={effectiveCategory}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full appearance-none rounded-xl border border-white/[0.08] bg-[#171a1f] px-4 py-3 text-sm text-zinc-200 outline-none transition hover:border-white/[0.12] focus:border-white/25"
+                disabled={loadingCategories && categories.length === 0}
+                className="w-full appearance-none rounded-xl border border-white/[0.08] bg-[#171a1f] px-4 py-3 text-sm text-zinc-200 outline-none transition hover:border-white/[0.12] focus:border-white/25 disabled:opacity-60"
               >
+                {categories.length === 0 && (
+                  <option value="">
+                    {loadingCategories ? "Loading…" : "No categories yet"}
+                  </option>
+                )}
+
                 {categories.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
+                  <option key={item.id} value={item.name}>
+                    {item.name}
                   </option>
                 ))}
               </select>
-            </FormField>
+            </div>
 
             {/* Amount */}
             <FormField label="Amount">
@@ -140,20 +277,25 @@ export function Entry({ selectedDate, setSelectedDate }) {
           {/* --------------------------------
               Actions
           -------------------------------- */}
-          <div className="mt-auto pt-10">
+          <div className="pt-6">
             <div className="flex gap-3">
               <button
-                onClick={() => clearForm()}
+                type="button"
+                onClick={() => {
+                  clearForm();
+                  showMessage("Form cleared.");
+                }}
                 className="flex-1 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm font-medium text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200 active:scale-[0.98]"
               >
                 Clear Form
               </button>
 
               <button
-                onClick={handleAddExpense}
+                type="button"
+                onClick={handleSubmitExpense}
                 className="flex-1 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 active:scale-[0.98]"
               >
-                Add Expense
+                {editingId !== null ? "Update Expense" : "Add Expense"}
               </button>
             </div>
 
@@ -164,8 +306,107 @@ export function Entry({ selectedDate, setSelectedDate }) {
           </div>
         </section>
 
+        {/* --------------------------------
+            Latest transactions
+        -------------------------------- */}
+        <section className="mt-6">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-zinc-200">
+              Recent transactions
+            </h2>
+            <span className="text-[11px] text-zinc-600">
+              {recentExpenses.length} latest
+            </span>
+          </div>
+
+          {recentLoading && recentExpenses.length === 0 ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((item) => (
+                <div
+                  key={item}
+                  className="h-14 animate-pulse rounded-xl border border-white/[0.06] bg-[#111418]"
+                />
+              ))}
+            </div>
+          ) : recentExpenses.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-white/[0.07] py-6 text-center text-xs text-zinc-600">
+              No expenses yet.
+            </p>
+          ) : (
+            <ul className="divide-y divide-white/[0.05] overflow-hidden rounded-xl border border-white/[0.06] bg-[#111418]">
+              {recentExpenses.map((expense) => {
+                const isEditing = editingId === expense.id;
+                const isConfirming = confirmDeleteId === expense.id;
+
+                return (
+                  <li
+                    key={expense.id}
+                    className={`flex items-center gap-3 px-3 py-2.5 ${
+                      isEditing ? "bg-white/[0.04]" : ""
+                    }`}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor: categoryColor(expense.category),
+                      }}
+                    />
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="truncate text-sm text-zinc-200">
+                          {expense.category}
+                        </p>
+                        <p className="shrink-0 text-sm font-medium tabular-nums text-zinc-100">
+                          {formatMoney(expense.amount)}
+                        </p>
+                      </div>
+
+                      <p className="mt-0.5 truncate text-[11px] text-zinc-600">
+                        {formatDateLabel(expense.date)}
+                        {expense.notes ? ` · ${expense.notes}` : ""}
+                      </p>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => startEditing(expense)}
+                        aria-label={`Edit ${expense.category} expense`}
+                        className="rounded-lg px-2 py-1 text-xs text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(expense)}
+                        aria-label={`Delete ${expense.category} expense`}
+                        className={`rounded-lg px-2 py-1 text-xs transition ${
+                          isConfirming
+                            ? "bg-red-500/15 text-red-300"
+                            : "text-zinc-500 hover:bg-red-500/10 hover:text-red-300"
+                        }`}
+                      >
+                        {isConfirming ? "Confirm?" : "Delete"}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
         <Footer />
       </div>
+
+      {showCategoryManager && (
+        <CategoryManager
+          open={showCategoryManager}
+          onClose={() => setShowCategoryManager(false)}
+        />
+      )}
     </main>
   );
 }

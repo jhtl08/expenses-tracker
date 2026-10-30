@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { CATEGORY_COLORS } from "../database/defaults.js";
 
 const months = [
   "January",
@@ -158,7 +160,101 @@ export function DatePicker({ selectedDate, setSelectedDate }) {
 export function Footer() {
   return (
     <footer className="pt-6 text-center text-xs text-zinc-700">
-      Expense Tracker • A Canary Project • by Jason Lorenzo
+      Expense Tracker • A Canary Project
     </footer>
+  );
+}
+
+export function Modal({ title, description, onClose, children, footer }) {
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-6"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#111418] shadow-2xl sm:rounded-2xl"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-white/[0.07] px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-zinc-100">{title}</h2>
+
+            {description && (
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                {description}
+              </p>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xl leading-none text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+          >
+            ×
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {children}
+        </div>
+
+        {footer && (
+          <div className="border-t border-white/[0.07] px-5 py-3">{footer}</div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+export function ColorPicker({ value, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {CATEGORY_COLORS.map((color) => {
+        const selected = color.toLowerCase() === value?.toLowerCase();
+
+        return (
+          <button
+            key={color}
+            type="button"
+            aria-label={`Use colour ${color}`}
+            aria-pressed={selected}
+            onClick={() => onChange(color)}
+            className={`h-7 w-7 rounded-full border-2 transition ${
+              selected
+                ? "scale-110 border-white"
+                : "border-transparent hover:scale-105"
+            }`}
+            style={{ backgroundColor: color }}
+          />
+        );
+      })}
+    </div>
   );
 }
