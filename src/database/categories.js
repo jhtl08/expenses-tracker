@@ -1,10 +1,7 @@
 import { initializeDatabase } from "./database.js";
 import { notifyDataChanged } from "./events.js";
 import { getShortcuts, saveShortcuts } from "./shortcuts.js";
-import {
-  FALLBACK_CATEGORY_COLOR,
-  PROTECTED_CATEGORY,
-} from "./defaults.js";
+import { FALLBACK_CATEGORY_COLOR, PROTECTED_CATEGORY } from "./defaults.js";
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
@@ -49,9 +46,7 @@ async function reassignShortcutCategory(fromName, toName) {
   const from = fromName.toLowerCase();
   const shortcuts = await getShortcuts();
 
-  if (
-    !shortcuts.some((shortcut) => shortcut.category.toLowerCase() === from)
-  ) {
+  if (!shortcuts.some((shortcut) => shortcut.category.toLowerCase() === from)) {
     return;
   }
 
@@ -93,12 +88,7 @@ export async function addCategory({ name, color }) {
     const result = await db.run(
       `INSERT INTO categories (name, color, sort_order, created_at)
        VALUES (?, ?, ?, ?);`,
-      [
-        normalizedName,
-        normalizedColor,
-        nextOrder,
-        new Date().toISOString(),
-      ],
+      [normalizedName, normalizedColor, nextOrder, new Date().toISOString()],
     );
 
     notifyDataChanged();
@@ -131,7 +121,9 @@ export async function updateCategory(id, { name, color }) {
 
   // "Other" has to keep its name, otherwise the delete fallback can be broken.
   if (existingIsProtected && nextName !== existing.name) {
-    throw new Error(`"${PROTECTED_CATEGORY}" is reserved and cannot be renamed.`);
+    throw new Error(
+      `"${PROTECTED_CATEGORY}" is reserved and cannot be renamed.`,
+    );
   }
 
   // Stop another category from claiming the reserved fallback name.
@@ -235,4 +227,22 @@ export async function deleteCategory(id) {
   notifyDataChanged();
 
   return true;
+}
+
+export async function reorderCategories(categories) {
+  const db = await initializeDatabase();
+
+  try {
+    // Save the new position of each category.
+    for (let index = 0; index < categories.length; index++) {
+      await db.run("UPDATE categories SET sort_order = ? WHERE id = ?;", [
+        index + 1,
+        categories[index].id,
+      ]);
+    }
+
+    notifyDataChanged();
+  } catch (error) {
+    throw friendlyError(error, "Could not reorder categories.");
+  }
 }

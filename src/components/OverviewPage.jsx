@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Footer } from "./Components.jsx";
-import {
-  CategoryBreakdownChart,
-  CategoryTimeChart,
-} from "./ExpenseCharts.jsx";
+import { CategoryBreakdownChart, CategoryTimeChart } from "./ExpenseCharts.jsx";
 import { getCategories } from "../database/categories.js";
 import { deleteExpense, getExpensesByRange } from "../database/expenses.js";
 import { getSetting, setSetting } from "../database/settings.js";
@@ -70,7 +67,9 @@ function DeltaBadge({ delta, percent }) {
   }
 
   if (Math.abs(percent) < 0.05) {
-    return <span className="text-xs text-zinc-500">Same as previous period</span>;
+    return (
+      <span className="text-xs text-zinc-500">Same as previous period</span>
+    );
   }
 
   const increased = delta > 0;
@@ -82,9 +81,7 @@ function DeltaBadge({ delta, percent }) {
       }`}
     >
       {increased ? "▲" : "▼"} {formatPercent(Math.abs(percent))}
-      <span className="ml-1 font-normal text-zinc-500">
-        vs previous period
-      </span>
+      <span className="ml-1 font-normal text-zinc-500">vs previous period</span>
     </span>
   );
 }
@@ -138,7 +135,10 @@ export function Overview() {
   }, [filters]);
 
   const range = useMemo(
-    () => (filters ? getPresetRange(filters.preset, { ...filters, now: today }) : null),
+    () =>
+      filters
+        ? getPresetRange(filters.preset, { ...filters, now: today })
+        : null,
     [filters, today],
   );
 
@@ -215,8 +215,7 @@ export function Overview() {
   );
 
   const delta = overview ? overview.total - previousTotal : 0;
-  const deltaPercent =
-    previousTotal > 0 ? (delta / previousTotal) * 100 : null;
+  const deltaPercent = previousTotal > 0 ? (delta / previousTotal) * 100 : null;
 
   const categoryColors = useMemo(() => {
     const map = new Map();
@@ -451,9 +450,7 @@ export function Overview() {
               <StatCard
                 label="Top spending day"
                 value={
-                  overview.topDay
-                    ? formatMoney(overview.topDay.total)
-                    : "—"
+                  overview.topDay ? formatMoney(overview.topDay.total) : "—"
                 }
                 hint={
                   overview.topDay
@@ -548,14 +545,9 @@ export function Overview() {
                       />
 
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline justify-between gap-3">
-                          <p className="truncate text-sm text-zinc-200">
-                            {expense.category}
-                          </p>
-                          <p className="shrink-0 text-sm font-medium tabular-nums text-zinc-100">
-                            {formatMoney(expense.amount)}
-                          </p>
-                        </div>
+                        <p className="truncate text-sm text-zinc-200">
+                          {expense.category}
+                        </p>
 
                         <p className="mt-0.5 truncate text-[11px] text-zinc-600">
                           {formatDateLabel(expense.date)}
@@ -563,23 +555,28 @@ export function Overview() {
                         </p>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(expense)}
-                        disabled={deletingId === expense.id}
-                        aria-label={`Delete ${expense.category} expense`}
-                        className={`shrink-0 rounded-lg px-2 py-1 text-xs transition disabled:opacity-40 ${
-                          confirmDeleteId === expense.id
-                            ? "bg-red-500/15 text-red-300"
-                            : "text-zinc-600 hover:bg-red-500/10 hover:text-red-300"
-                        }`}
-                      >
-                        {deletingId === expense.id
-                          ? "…"
-                          : confirmDeleteId === expense.id
-                            ? "Confirm?"
-                            : "Delete"}
-                      </button>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <p className="shrink-0 text-sm font-medium tabular-nums text-zinc-100">
+                          {formatMoney(expense.amount)}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(expense)}
+                          disabled={deletingId === expense.id}
+                          aria-label={`Delete ${expense.category} expense`}
+                          className={`shrink-0 rounded-lg px-2 py-1 text-xs transition disabled:opacity-40 ${
+                            confirmDeleteId === expense.id
+                              ? "bg-red-500/15 text-red-300"
+                              : "text-zinc-600 hover:bg-red-500/10 hover:text-red-300"
+                          }`}
+                        >
+                          {deletingId === expense.id
+                            ? "…"
+                            : confirmDeleteId === expense.id
+                              ? "Confirm?"
+                              : "Delete"}
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>

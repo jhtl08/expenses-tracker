@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ColorPicker, Modal } from "./Components.jsx";
 import {
   addCategory,
   deleteCategory,
   updateCategory,
+  reorderCategories,
 } from "../database/categories.js";
 import { PROTECTED_CATEGORY } from "../database/defaults.js";
 import { useCategories } from "../hooks/useDatabase.js";
@@ -19,6 +20,13 @@ export function CategoryManager({ open, onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Category currently being dragged.
+  const [draggingId, setDraggingId] = useState(null);
+  const [dropTargetId, setDropTargetId] = useState(null);
+
+  // Long-press timer.
+  const pressTimer = useRef(null);
+  const wasDragging = useRef(false);
 
   if (!open) {
     return null;
@@ -96,11 +104,114 @@ export function CategoryManager({ open, onClose }) {
     try {
       await deleteCategory(category.id);
       setPendingDeleteId(null);
-      flash(`Deleted "${category.name}". Expenses moved to ${PROTECTED_CATEGORY}.`);
+      flash(
+        `Deleted "${category.name}". Expenses moved to ${PROTECTED_CATEGORY}.`,
+      );
     } catch (deleteError) {
       setError(deleteError.message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  /*
+   * Start the long-press timer.
+   * Holding a category for 300 ms activates dragging.
+   */
+  const startPress = (id) => {
+    if (editingId !== null || busy) return;
+
+    clearTimeout(pressTimer.current);
+
+    pressTimer.current = setTimeout(() => {
+      wasDragging.current = true;
+      setDraggingId(id);
+    }, 300);
+  };
+
+  /*
+   * Cancel a pending long press.
+   */
+  const cancelPress = () => {
+    clearTimeout(pressTimer.current);
+  };
+
+  /*
+   * Track which category the dragged category is hovering over.
+   */
+  const handlePointerMove = (event) => {
+    if (draggingId === null) return;
+
+    const element = document.elementFromPoint(event.clientX, event.clientY);
+
+    const row = element?.closest("[data-category-id]");
+
+    if (!row) {
+      setDropTargetId(null);
+      return;
+    }
+
+    const targetId = row.dataset.categoryId;
+
+    if (String(targetId) === String(draggingId)) {
+      setDropTargetId(null);
+      return;
+    }
+
+    setDropTargetId(targetId);
+  };
+
+  /*
+   * Finish dragging and swap category positions.
+   */
+  const endPress = () => {
+    clearTimeout(pressTimer.current);
+
+    if (draggingId !== null && dropTargetId !== null) {
+      const fromIndex = categories.findIndex(
+        (category) => String(category.id) === String(draggingId),
+      );
+
+      const toIndex = categories.findIndex(
+        (category) => String(category.id) === String(dropTargetId),
+      );
+
+      if (fromIndex !== -1 && toIndex !== -1) {
+        const updated = [...categories];
+
+        [updated[fromIndex], updated[toIndex]] = [
+          updated[toIndex],
+          updated[fromIndex],
+        ];
+
+        // Update the displayed order and persist it.
+        // See the database changes in section 4.
+        handleReorder(updated);
+      }
+    }
+
+    setDraggingId(null);
+    setDropTargetId(null);
+
+    setTimeout(() => {
+      wasDragging.current = false;
+    }, 0);
+  };
+
+  /*
+   * Clean up the timer when the component unmounts.
+   */
+  useEffect(() => {
+    return () => {
+      clearTimeout(pressTimer.current);
+    };
+  }, []);
+
+  const handleReorder = async (updated) => {
+    try {
+      await reorderCategories(updated);
+    } catch (error) {
+      setError(error.message);
     }
   };
 
@@ -135,6 +246,8 @@ export function CategoryManager({ open, onClose }) {
             const isProtected =
               category.name.toLowerCase() === PROTECTED_CATEGORY.toLowerCase();
             const confirmingDelete = pendingDeleteId === category.id;
+            const isDragging = draggingId === category.id;
+            const isDropTarget = String(dropTargetId) === String(category.id);
 
             if (isEditing) {
               return (
@@ -178,8 +291,52 @@ export function CategoryManager({ open, onClose }) {
             return (
               <div
                 key={category.id}
-                className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5"
+                data-category-id={category.id}
+                onPointerDown={(event) => {
+                  if (event.target.closest("button")) return;
+                  startPress(category.id);
+                }}
+                onPointerMove={handlePointerMove}
+                onPointerUp={endPress}
+                onPointerCancel={endPress}
+                onPointerLeave={() => {
+                  if (draggingId === null) {
+                    cancelPress();
+                  }
+                }}
+                className={`
+                  flex items-center gap-3 rounded-xl border px-3 py-2.5
+                  touch-none select-none
+                  transition-all duration-200
+                  ${
+                    isDragging
+                      ? "scale-[0.98] border-zinc-600 bg-zinc-900/60 opacity-50"
+                      : "border-white/[0.06] bg-white/[0.02]"
+                  }
+                  ${
+                    isDropTarget
+                      ? "ring-2 ring-zinc-500 ring-offset-2 ring-offset-[#0d0f12]"
+                      : ""
+                  }
+                `}
               >
+                {/* Drag handle */}
+                <span className="shrink-0 cursor-grab text-zinc-600 active:cursor-grabbing">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="h-4 w-4"
+                    aria-hidden="true"
+                  >
+                    <circle cx="9" cy="6" r="1.5" />
+                    <circle cx="15" cy="6" r="1.5" />
+                    <circle cx="9" cy="12" r="1.5" />
+                    <circle cx="15" cy="12" r="1.5" />
+                    <circle cx="9" cy="18" r="1.5" />
+                    <circle cx="15" cy="18" r="1.5" />
+                  </svg>
+                </span>
+
                 <span
                   className="h-3 w-3 shrink-0 rounded-full"
                   style={{ backgroundColor: category.color }}
