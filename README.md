@@ -72,6 +72,12 @@ The date chosen on the Entry page is also used when you tap a shortcut, so you c
 - Deleting a category moves its expenses to **Other**. Renaming a category updates existing expenses and shortcuts that use it.
 - Deleted default categories are not re-seeded on the next launch.
 
+### CSV import and export
+
+- **Export CSV** (Overview) downloads the expenses in the selected range as `expenses_START_to_END.csv` with columns `Date,Category,Amount,Notes`.
+- **Import CSV** (Overview) reads a CSV file with the same columns (a header row is optional), validates each row, auto-creates any category that does not exist yet, and reports how many rows were imported or skipped.
+- Invalid rows (bad date, missing category, non-positive amount) are skipped and listed in the browser console.
+
 ---
 
 ## How the app is organised
@@ -152,6 +158,7 @@ expenses-tracker/
 │   ├── hooks/useDatabase.js      # useDataVersion, useCategories
 │   └── utils/
 │       ├── analytics.js          # Range aggregation and chart series
+│       ├── csv.js                # CSV parse and download helpers
 │       ├── date.js               # Local date helpers, presets, granularity
 │       └── format.js             # Currency and percent formatting
 ├── capacitor.config.json         # Capacitor app ID, name, web dir, SQLite plugin options

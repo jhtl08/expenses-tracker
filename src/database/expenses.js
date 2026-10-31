@@ -204,6 +204,33 @@ export async function deleteAllExpenses() {
   return result.changes?.changes ?? 0;
 }
 
+export async function deleteExpensesByRange(start, end) {
+  const db = await initializeDatabase();
+  const conditions = [];
+  const params = [];
+
+  if (start) {
+    conditions.push("date >= ?");
+    params.push(start);
+  }
+
+  if (end) {
+    conditions.push("date <= ?");
+    params.push(end);
+  }
+
+  const sql =
+    conditions.length > 0
+      ? `DELETE FROM expenses WHERE ${conditions.join(" AND ")};`
+      : "DELETE FROM expenses;";
+
+  const result = await db.run(sql, params);
+
+  notifyDataChanged();
+
+  return result.changes?.changes ?? 0;
+}
+
 /**
  * Totals grouped by category, computed by SQLite. The Overview page currently
  * aggregates in JavaScript so it can build the time series from a single

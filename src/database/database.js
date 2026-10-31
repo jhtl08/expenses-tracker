@@ -95,6 +95,7 @@ async function prepareSchema(db) {
   await migrateExpensesTable(db);
   await seedDefaultCategories(db);
   await backfillCategoriesFromExpenses(db);
+  await db.execute("DROP TABLE IF EXISTS scheduled_expenses;");
 }
 
 async function openNativeDatabase() {

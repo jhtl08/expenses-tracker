@@ -267,13 +267,15 @@ export function ShortcutsCards({ selectedDate }) {
           Tap to add · long-press to reorder
         </p>
 
-        <button
-          type="button"
-          onClick={() => setShowCategoryManager(true)}
-          className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
-        >
-          Manage categories
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowCategoryManager(true)}
+            className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+          >
+            Manage categories
+          </button>
+        </div>
       </div>
 
       {statusMessage && (
@@ -733,3 +735,4 @@ function ShortcutEditor({ categories, shortcut, onSave, onDelete, onCancel }) {
     </form>
   );
 }
+

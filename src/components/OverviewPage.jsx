@@ -1,8 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
-import { Footer } from "./Components.jsx";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Footer, Modal } from "./Components.jsx";
 import { CategoryBreakdownChart, CategoryTimeChart } from "./ExpenseCharts.jsx";
 import { getCategories } from "../database/categories.js";
-import { deleteExpense, getExpensesByRange } from "../database/expenses.js";
+import {
+  deleteExpense,
+  deleteExpensesByRange,
+  getExpensesByRange,
+} from "../database/expenses.js";
+import { addCategory } from "../database/categories.js";
+import { addExpense } from "../database/expenses.js";
+import { downloadCsv, parseCsv, toCsv } from "../utils/csv.js";
 import { getSetting, setSetting } from "../database/settings.js";
 import { useDataVersion } from "../hooks/useDatabase.js";
 import { buildOverview, sumExpenses } from "../utils/analytics.js";
@@ -31,7 +38,7 @@ function normalizeFilters(saved) {
     customStart:
       parseISODate(saved?.customStart) !== null
         ? saved.customStart
-        : toISODate(new Date(today.getFullYear(), today.getMonth(), 1)),
+        : toISODate(today),
     customEnd:
       parseISODate(saved?.customEnd) !== null
         ? saved.customEnd
@@ -99,6 +106,11 @@ export function Overview() {
   const [deletingId, setDeletingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [page, setPage] = useState(0);
+  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+  const [deleteAllBusy, setDeleteAllBusy] = useState(false);
+  const [csvMessage, setCsvMessage] = useState("");
+  const [csvBusy, setCsvBusy] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Restore the last-used range. The filters are written back whenever they
   // change, so the Overview opens exactly where the user left it.
@@ -270,6 +282,81 @@ export function Overview() {
     }
   };
 
+  const handleExportCsv = async () => {
+    if (expenses.length === 0) {
+      return;
+    }
+
+    const filename = `expenses_${startISO}_to_${endISO}.csv`;
+    downloadCsv(filename, toCsv(expenses));
+  };
+
+  const handleImportFile = async (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setCsvBusy(true);
+    setCsvMessage("");
+
+    try {
+      const text = await file.text();
+      const { rows, errors } = parseCsv(text);
+
+      let imported = 0;
+      const categories = await getCategories();
+      const known = new Set(categories.map((item) => item.name.toLowerCase()));
+
+      for (const row of rows) {
+        if (!known.has(row.category.toLowerCase())) {
+          await addCategory({ name: row.category, color: "#94a3b8" });
+          known.add(row.category.toLowerCase());
+        }
+
+        await addExpense(row);
+        imported += 1;
+      }
+
+      const skipped = errors.length;
+      setCsvMessage(
+        `Imported ${imported} expense${imported === 1 ? "" : "s"}` +
+          (skipped > 0
+            ? `, skipped ${skipped} row${skipped === 1 ? "" : "s"}.`
+            : "."),
+      );
+
+      if (errors.length > 0) {
+        console.warn("CSV import errors:", errors);
+      }
+    } catch (importError) {
+      console.error("Failed to import CSV:", importError);
+      setCsvMessage(importError.message || "Could not import the CSV.");
+    } finally {
+      setCsvBusy(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleDeleteAllInRange = async () => {
+    setDeleteAllBusy(true);
+    setError("");
+
+    try {
+      await deleteExpensesByRange(startISO, endISO);
+      setShowDeleteAllDialog(false);
+      setPage(0);
+    } catch (deleteError) {
+      console.error("Failed to delete range:", deleteError);
+      setError(deleteError.message || "Could not delete the range.");
+    } finally {
+      setDeleteAllBusy(false);
+    }
+  };
+
   const isInitialLoading = !filters || (loading && expenses.length === 0);
   const pageCount = Math.max(1, Math.ceil(expenses.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
@@ -284,13 +371,10 @@ export function Overview() {
   return (
     <main className="flex min-h-full flex-col bg-[#0d0f12] text-white">
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col px-5 py-8 sm:px-8">
-        <header className="mb-6">
+        <header className="mb-6 text-center">
           <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">
             Overview
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            Spending insights
-          </h1>
         </header>
 
         {/* Range filters */}
@@ -523,6 +607,12 @@ export function Overview() {
                 </span>
               </div>
 
+              {csvMessage && (
+                <p className="mb-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-zinc-300">
+                  {csvMessage}
+                </p>
+              )}
+
               {visibleExpenses.length === 0 ? (
                 <p className="py-6 text-center text-xs text-zinc-600">
                   No transactions in this range.
@@ -617,8 +707,74 @@ export function Overview() {
                   )}
                 </div>
               )}
+
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleExportCsv}
+                    disabled={expenses.length === 0}
+                    className="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[11px] text-zinc-400 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    Export CSV
+                  </button>
+
+                  <label className="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[11px] text-zinc-400 transition hover:bg-white/[0.05] hover:text-zinc-200 cursor-pointer">
+                    {csvBusy ? "Importing…" : "Import CSV"}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv,text/csv"
+                      className="hidden"
+                      onChange={handleImportFile}
+                      disabled={csvBusy}
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteAllDialog(true)}
+                    disabled={deleteAllBusy}
+                    className="rounded-lg border border-red-500/20 px-2.5 py-1 text-[11px] text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    {deleteAllBusy ? "Deleting…" : "Delete all in range"}
+                  </button>
+                </div>
             </section>
           </div>
+        )}
+
+        {showDeleteAllDialog && (
+          <Modal
+            title="Delete all in range"
+            description={`This will permanently delete ${expenses.length} expense${
+              expenses.length === 1 ? "" : "s"
+            } in the selected range.`}
+            onClose={() => {
+              if (!deleteAllBusy) {
+                setShowDeleteAllDialog(false);
+              }
+            }}
+          >
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteAllDialog(false)}
+                disabled={deleteAllBusy}
+                className="rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-zinc-400 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDeleteAllInRange}
+                disabled={deleteAllBusy}
+                className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-300 transition hover:bg-red-500/20 disabled:opacity-40"
+              >
+                {deleteAllBusy ? "Deleting…" : "Delete all"}
+              </button>
+            </div>
+          </Modal>
         )}
 
         <Footer />

@@ -4,10 +4,7 @@
 
 export const RANGE_PRESETS = [
   { id: "this-month", label: "This Month" },
-  { id: "last-month", label: "Last Month" },
-  { id: "last-3-months", label: "Last 3 Months" },
-  { id: "last-12-months", label: "Last 12 Months" },
-  { id: "last-3-years", label: "Last 3 Years" },
+  { id: "this-year", label: "This Year" },
   { id: "custom", label: "Custom" },
 ];
 
@@ -140,16 +137,8 @@ export function getPresetRange(preset, { now = new Date(), customStart, customEn
   const today = startOfDay(now);
 
   switch (preset) {
-    case "last-month": {
-      const first = shiftMonths(today, -1);
-      return { start: first, end: endOfMonth(first) };
-    }
-    case "last-3-months":
-      return { start: shiftMonths(today, -2), end: today };
-    case "last-12-months":
-      return { start: shiftMonths(today, -11), end: today };
-    case "last-3-years":
-      return { start: new Date(today.getFullYear() - 2, 0, 1), end: today };
+    case "this-year":
+      return { start: new Date(today.getFullYear(), 0, 1), end: today };
     case "custom": {
       const start = parseISODate(customStart) ?? startOfMonth(today);
       const end = parseISODate(customEnd) ?? today;
