@@ -28,10 +28,6 @@ export function CategoryManager({ open, onClose }) {
   const pressTimer = useRef(null);
   const wasDragging = useRef(false);
 
-  if (!open) {
-    return null;
-  }
-
   const flash = (message, isError = false) => {
     setError(isError ? message : "");
     setNotice(isError ? "" : message);
@@ -214,6 +210,11 @@ export function CategoryManager({ open, onClose }) {
       setError(error.message);
     }
   };
+
+  // Hooks must all run before this early return, so it stays below them.
+  if (!open) {
+    return null;
+  }
 
   return (
     <Modal

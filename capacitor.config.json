@@ -1,5 +1,5 @@
 {
-  "appId": "com.canary.expensetracker",
+  "appId": "com.example.expensetracker",
   "appName": "expense-tracker",
   "webDir": "dist",
   "plugins": {
