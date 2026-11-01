@@ -3,9 +3,11 @@
 // shifts when the app is opened in a different timezone.
 
 export const RANGE_PRESETS = [
+  { id: "this-day", label: "This Day" },
   { id: "this-month", label: "This Month" },
   { id: "this-year", label: "This Year" },
   { id: "custom", label: "Custom" },
+  { id: "all-time", label: "All Time" },
 ];
 
 export function startOfDay(date) {
@@ -131,14 +133,21 @@ export function formatDateLabel(value) {
 
 /**
  * Resolve a preset into an inclusive local date range.
- * `customStart` / `customEnd` are YYYY-MM-DD strings.
+ * `customStart` / `customEnd` / `allTimeStart` are YYYY-MM-DD strings.
  */
-export function getPresetRange(preset, { now = new Date(), customStart, customEnd } = {}) {
+export function getPresetRange(preset, { now = new Date(), customStart, customEnd, allTimeStart } = {}) {
   const today = startOfDay(now);
 
   switch (preset) {
+    case "this-day":
+      return { start: today, end: today };
     case "this-year":
       return { start: new Date(today.getFullYear(), 0, 1), end: today };
+    case "all-time": {
+      const start = parseISODate(allTimeStart) ?? today;
+
+      return start <= today ? { start, end: today } : { start: today, end: today };
+    }
     case "custom": {
       const start = parseISODate(customStart) ?? startOfMonth(today);
       const end = parseISODate(customEnd) ?? today;

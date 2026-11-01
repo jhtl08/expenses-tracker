@@ -32,6 +32,20 @@ const SCHEMA_STATEMENTS = [
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );`,
+  `CREATE TABLE IF NOT EXISTS scheduled_expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL,
+    amount REAL NOT NULL,
+    notes TEXT,
+    recurrence_type TEXT NOT NULL,
+    day_of_month INTEGER,
+    month_of_year INTEGER,
+    interval_days INTEGER,
+    start_date TEXT,
+    last_run_date TEXT,
+    created_at TEXT NOT NULL
+  );`,
 ];
 
 let connection = null;
@@ -95,7 +109,6 @@ async function prepareSchema(db) {
   await migrateExpensesTable(db);
   await seedDefaultCategories(db);
   await backfillCategoriesFromExpenses(db);
-  await db.execute("DROP TABLE IF EXISTS scheduled_expenses;");
 }
 
 async function openNativeDatabase() {

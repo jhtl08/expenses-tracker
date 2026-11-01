@@ -4,6 +4,7 @@ import { Entry } from "./components/EntryPage.jsx";
 import { Overview } from "./components/OverviewPage.jsx";
 import { Shortcuts } from "./components/ShortcutsPage.jsx";
 import { initializeDatabase } from "./database/database.js";
+import { runScheduler } from "./database/scheduled.js";
 
 const pages = [
   {
@@ -29,6 +30,8 @@ function App() {
   const [databaseState, setDatabaseState] = useState("loading");
   const [databaseError, setDatabaseError] = useState("");
   const [startupAttempt, setStartupAttempt] = useState(0);
+  // Expenses the scheduler auto-registered this session (shown on Entry).
+  const [autoRegistered, setAutoRegistered] = useState([]);
   const touchStartX = useRef(null);
 
   // Open the SQLite database (and create/upgrade the schema) before showing
@@ -41,6 +44,19 @@ function App() {
         if (active) {
           setDatabaseState("ready");
         }
+
+        // Fire-and-forget catch-up of due scheduled expenses. The in-flight
+        // lock inside runScheduler prevents double inserts, and failures here
+        // must never be mistaken for a database failure.
+        runScheduler()
+          .then((inserted) => {
+            if (active && inserted.length > 0) {
+              setAutoRegistered(inserted);
+            }
+          })
+          .catch((schedulerError) => {
+            console.error("Failed to run scheduled expenses:", schedulerError);
+          });
       })
       .catch((error) => {
         console.error("Failed to initialize the database:", error);
@@ -145,6 +161,8 @@ function App() {
           <Entry
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
+            autoRegistered={autoRegistered}
+            setAutoRegistered={setAutoRegistered}
           />
         </section>
 

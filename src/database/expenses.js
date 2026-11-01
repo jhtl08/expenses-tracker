@@ -118,6 +118,19 @@ export async function getExpensesByRange(start, end) {
   return getExpenses({ start, end });
 }
 
+/**
+ * Earliest recorded expense date (YYYY-MM-DD) or null when the table is
+ * empty. Used by the Overview "All Time" preset.
+ */
+export async function getEarliestExpenseDate() {
+  const db = await initializeDatabase();
+  const result = await db.query(
+    "SELECT MIN(date) AS date FROM expenses;",
+  );
+
+  return result.values?.[0]?.date ?? null;
+}
+
 export async function getExpensesByCategory(category) {
   return getExpenses({ category });
 }

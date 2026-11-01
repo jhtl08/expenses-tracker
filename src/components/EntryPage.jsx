@@ -13,7 +13,12 @@ import { formatMoney } from "../utils/format.js";
 
 const RECENT_LIMIT = 5;
 
-export function Entry({ selectedDate, setSelectedDate }) {
+export function Entry({
+  selectedDate,
+  setSelectedDate,
+  autoRegistered = [],
+  setAutoRegistered = () => {},
+}) {
   const { categories, loading: loadingCategories } = useCategories();
   const version = useDataVersion();
   const [category, setCategory] = useState("");
@@ -28,6 +33,9 @@ export function Entry({ selectedDate, setSelectedDate }) {
 
   // Expense waiting for a second click on Delete.
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  // Second-click arming for the auto-registered notice (expense id or "all").
+  const [autoConfirm, setAutoConfirm] = useState(null);
 
   const [recentExpenses, setRecentExpenses] = useState([]);
   const [recentLoading, setRecentLoading] = useState(true);
@@ -61,6 +69,44 @@ export function Entry({ selectedDate, setSelectedDate }) {
       active = false;
     };
   }, [version]);
+
+  // Clicking anywhere other than the armed button disarms "Confirm?".
+  useEffect(() => {
+    if (confirmDeleteId === null) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (!event.target.closest(`[data-confirm-id="${confirmDeleteId}"]`)) {
+        setConfirmDeleteId(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [confirmDeleteId]);
+
+  // Same disarm-on-outside-click for the auto-registered notice.
+  useEffect(() => {
+    if (autoConfirm === null) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (!event.target.closest(`[data-auto-confirm="${autoConfirm}"]`)) {
+        setAutoConfirm(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [autoConfirm]);
 
   const showMessage = (text) => {
     setMessage(text);
@@ -154,6 +200,53 @@ export function Entry({ selectedDate, setSelectedDate }) {
     } catch (error) {
       console.error("Failed to delete expense:", error);
       setMessage(error.message || "Failed to delete expense.");
+    }
+  };
+
+  // -----------------------------
+  // Auto-registered scheduled expenses
+  // -----------------------------
+
+  const dismissAutoRegistered = () => {
+    setAutoConfirm(null);
+    setAutoRegistered([]);
+  };
+
+  const handleDeleteAuto = async (expense) => {
+    if (autoConfirm !== expense.id) {
+      setAutoConfirm(expense.id);
+      return;
+    }
+
+    try {
+      await deleteExpense(expense.id);
+      setAutoRegistered((current) =>
+        current.filter((item) => item.id !== expense.id),
+      );
+      setAutoConfirm(null);
+      showMessage("Expense deleted");
+    } catch (error) {
+      console.error("Failed to delete expense:", error);
+      setMessage(error.message || "Failed to delete expense.");
+    }
+  };
+
+  const handleDeleteAllAuto = async () => {
+    if (autoConfirm !== "all") {
+      setAutoConfirm("all");
+      return;
+    }
+
+    try {
+      for (const expense of autoRegistered) {
+        await deleteExpense(expense.id);
+      }
+
+      dismissAutoRegistered();
+      showMessage("Auto-registered expenses deleted");
+    } catch (error) {
+      console.error("Failed to delete expenses:", error);
+      setMessage(error.message || "Failed to delete expenses.");
     }
   };
 
@@ -338,6 +431,87 @@ export function Entry({ selectedDate, setSelectedDate }) {
         </section>
 
         {/* --------------------------------
+            Auto-registered scheduled expenses
+        -------------------------------- */}
+        {autoRegistered.length > 0 && (
+          <section className="mt-6 rounded-xl border border-violet-500/30 bg-violet-500/10 p-4">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <p className="text-xs font-medium leading-relaxed text-violet-200">
+                The following scheduled expenses were automatically registered:
+              </p>
+
+              <button
+                type="button"
+                onClick={dismissAutoRegistered}
+                aria-label="Dismiss"
+                className="-mr-1 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-lg leading-none text-violet-300/70 transition hover:bg-violet-500/15 hover:text-violet-100"
+              >
+                ×
+              </button>
+            </div>
+
+            <ul className="divide-y divide-violet-500/15">
+              {autoRegistered.map((expense) => (
+                <li key={expense.id} className="flex items-center gap-3 py-2">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor: categoryColor(expense.category),
+                    }}
+                  />
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-violet-100">
+                      {expense.category}
+                    </p>
+
+                    <p className="mt-0.5 truncate text-[11px] text-violet-300/70">
+                      {formatDateLabel(expense.date)}
+                      {expense.notes ? ` · ${expense.notes}` : ""}
+                    </p>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-1">
+                    <p className="text-sm font-medium tabular-nums text-violet-100">
+                      {formatMoney(expense.amount)}
+                    </p>
+
+                    <button
+                      type="button"
+                      data-auto-confirm={expense.id}
+                      onClick={() => handleDeleteAuto(expense)}
+                      aria-label={`Delete ${expense.category} expense`}
+                      className={`rounded-lg px-2 py-1 text-xs transition ${
+                        autoConfirm === expense.id
+                          ? "bg-red-500/15 text-red-300"
+                          : "text-violet-300/70 hover:bg-red-500/10 hover:text-red-300"
+                      }`}
+                    >
+                      {autoConfirm === expense.id ? "Confirm?" : "Delete"}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                data-auto-confirm="all"
+                onClick={handleDeleteAllAuto}
+                className={`rounded-lg border px-2.5 py-1 text-[11px] transition ${
+                  autoConfirm === "all"
+                    ? "border-red-500/30 bg-red-500/15 text-red-300"
+                    : "border-red-500/20 text-red-300 hover:bg-red-500/10"
+                }`}
+              >
+                {autoConfirm === "all" ? "Confirm delete all?" : "Delete all"}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* --------------------------------
             Latest transactions
         -------------------------------- */}
         <section className="mt-6">
@@ -409,6 +583,7 @@ export function Entry({ selectedDate, setSelectedDate }) {
 
                       <button
                         type="button"
+                        data-confirm-id={expense.id}
                         onClick={() => handleDelete(expense)}
                         aria-label={`Delete ${expense.category} expense`}
                         className={`rounded-lg px-2 py-1 text-xs transition ${

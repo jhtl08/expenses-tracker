@@ -165,7 +165,7 @@ export function Footer() {
   );
 }
 
-export function Modal({ title, description, onClose, children, footer }) {
+export function Modal({ title, description, onClose, children, footer, centered = false }) {
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
@@ -185,7 +185,9 @@ export function Modal({ title, description, onClose, children, footer }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-6"
+      className={`fixed inset-0 z-[80] flex justify-center bg-black/70 backdrop-blur-sm ${
+        centered ? "items-center p-4 sm:p-6" : "items-end sm:items-center sm:p-6"
+      }`}
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
@@ -197,7 +199,9 @@ export function Modal({ title, description, onClose, children, footer }) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#111418] shadow-2xl sm:rounded-2xl"
+        className={`flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden border border-white/10 bg-[#111418] shadow-2xl ${
+          centered ? "rounded-2xl" : "rounded-t-3xl sm:rounded-2xl"
+        }`}
       >
         <header className="flex items-start justify-between gap-4 border-b border-white/[0.07] px-5 py-4">
           <div>

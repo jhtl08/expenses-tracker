@@ -17,6 +17,27 @@ export function CategoryManager({ open, onClose }) {
   const [draftName, setDraftName] = useState("");
   const [draftColor, setDraftColor] = useState("#34d399");
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
+
+  // Clicking anywhere other than the armed button disarms "Confirm?".
+  useEffect(() => {
+    if (pendingDeleteId === null) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (
+        !event.target.closest(`[data-confirm-id="${pendingDeleteId}"]`)
+      ) {
+        setPendingDeleteId(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [pendingDeleteId]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -359,6 +380,7 @@ export function CategoryManager({ open, onClose }) {
 
                   <button
                     type="button"
+                    data-confirm-id={category.id}
                     disabled={isProtected || busy}
                     onClick={() => handleDelete(category)}
                     title={

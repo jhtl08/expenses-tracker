@@ -2,18 +2,30 @@ import {
   BarElement,
   CategoryScale,
   Chart as ChartJS,
+  Filler,
   Legend,
   LinearScale,
+  LineElement,
+  PointElement,
   Tooltip,
 } from "chart.js";
-import { Bar } from "react-chartjs-2";
+import { Bar, Line } from "react-chartjs-2";
 import {
   formatCompactMoney,
   formatMoney,
   formatPercent,
 } from "../utils/format.js";
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Filler,
+  Tooltip,
+  Legend,
+);
 
 const GRID_COLOR = "rgba(255, 255, 255, 0.06)";
 const TICK_COLOR = "#71717a";
@@ -28,7 +40,7 @@ const stackedScale = {
     font: { size: 10 },
     maxRotation: 0,
     autoSkip: true,
-    maxTicksLimit: 8,
+    maxTicksLimit: 10,
   },
 };
 
@@ -80,6 +92,12 @@ export function CategoryBreakdownChart({ byCategory, total }) {
     scales: {
       x: {
         stacked: true,
+        // Pin the axis to exactly 0 → total so the stacked bar always fills
+        // the full width (100%) instead of leaving Chart.js "nice number"
+        // headroom past the total.
+        min: 0,
+        max: total,
+        grace: 0,
         grid: { color: GRID_COLOR, drawBorder: false },
         border: { display: false },
         ticks: {
@@ -137,12 +155,13 @@ export function CategoryTimeChart({ series }) {
     datasets: series.categories.map((category, index) => ({
       label: category.name,
       data: series.values[index],
+      fill: true,
       backgroundColor: category.color,
-      borderColor: "rgba(13, 15, 18, 0.7)",
-      borderWidth: 1,
-      borderSkipped: false,
-      borderRadius: 3,
-      maxBarThickness: 34,
+      borderColor: category.color,
+      borderWidth: 1.5,
+      tension: 0.25,
+      pointRadius: 0,
+      pointHitRadius: 8,
     })),
   };
 
@@ -190,7 +209,7 @@ export function CategoryTimeChart({ series }) {
 
   return (
     <div className="h-72">
-      <Bar data={data} options={options} />
+      <Line data={data} options={options} />
     </div>
   );
 }

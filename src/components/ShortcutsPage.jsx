@@ -1,6 +1,6 @@
-import { DatePicker, Footer } from "../components/Components.jsx";
+import { DatePicker, Footer, Modal } from "../components/Components.jsx";
 import { useEffect, useRef, useState } from "react";
-import { CategoryManager } from "./CategoryManager.jsx";
+import { ScheduledManager } from "./ScheduledManager.jsx";
 import { addExpense as addExpenseToDatabase } from "../database/expenses.js";
 import { getShortcuts, saveShortcuts } from "../database/shortcuts.js";
 import { useCategories, useDataVersion } from "../hooks/useDatabase.js";
@@ -22,8 +22,9 @@ export function Shortcuts({ selectedDate, setSelectedDate }) {
       </header>
 
       {/* Page Content */}
-      <main className="flex-1">
+      <main className="flex-1 space-y-8">
         <ShortcutsCards selectedDate={selectedDate} />
+        <ScheduledManager />
       </main>
 
       {/* Footer */}
@@ -38,7 +39,6 @@ export function ShortcutsCards({ selectedDate }) {
   const [shortcuts, setShortcuts] = useState([]);
   const [loadingShortcuts, setLoadingShortcuts] = useState(true);
   const [statusMessage, setStatusMessage] = useState("");
-  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   // Shortcut just clicked to add expense (prevent multiple clicks).
   const [isAdding, setIsAdding] = useState(false);
@@ -266,16 +266,6 @@ export function ShortcutsCards({ selectedDate }) {
         <p className="text-[11px] leading-relaxed text-zinc-600">
           Tap to add · long-press to reorder
         </p>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowCategoryManager(true)}
-            className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
-          >
-            Manage categories
-          </button>
-        </div>
       </div>
 
       {statusMessage && (
@@ -296,7 +286,6 @@ export function ShortcutsCards({ selectedDate }) {
           ))}
 
         {shortcuts.map((shortcut) => {
-          const isEditing = editingId === shortcut.id;
           const isDragging = draggingId === shortcut.id;
           const cardFeedback =
             feedback?.id === shortcut.id ? feedback : null;
@@ -351,11 +340,7 @@ export function ShortcutsCards({ selectedDate }) {
                     ? "border-red-500/50 bg-red-500/10"
                     : ""
                 }
-                ${
-                  editingId === shortcut.id
-                    ? "cursor-default"
-                    : "cursor-pointer"
-                }
+                cursor-pointer
                 ${
                   dropTargetId === shortcut.id
                     ? "ring-2 ring-zinc-500 ring-offset-2 ring-offset-[#0d0f12]"
@@ -379,8 +364,7 @@ export function ShortcutsCards({ selectedDate }) {
               )}
 
               {/* Edit button */}
-              {!isEditing && (
-                <button
+              <button
                   type="button"
                   data-edit-button
                   aria-label={`Edit ${shortcut.title}`}
@@ -426,83 +410,76 @@ export function ShortcutsCards({ selectedDate }) {
                     />
                   </svg>
                 </button>
-              )}
 
-              {isEditing ? (
-                <ShortcutEditor
-                  categories={categories}
-                  shortcut={shortcut}
-                  onSave={saveShortcut}
-                  onDelete={deleteShortcut}
-                  onCancel={() => setEditingId(null)}
-                />
-              ) : (
-                <>
-                  {/* Title */}
-                  <h2 className="min-w-0 pr-8 break-words text-base font-semibold leading-tight text-zinc-100">
-                    {shortcut.title}
-                  </h2>
+              {/* Title */}
+              <h2 className="min-w-0 pr-8 break-words text-base font-semibold leading-tight text-zinc-100">
+                {shortcut.title}
+              </h2>
 
-                  {/* Amount */}
-                  <p className="mt-2 break-words text-2xl font-semibold text-zinc-100">
-                    ₱
-                    {Number(shortcut.amount).toLocaleString("en-PH", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </p>
+              {/* Amount */}
+              <p className="mt-2 break-words text-2xl font-semibold text-zinc-100">
+                ₱
+                {Number(shortcut.amount).toLocaleString("en-PH", {
+                  minimumFractionDigits: 2,
+                })}
+              </p>
 
-                  {/* Category */}
-                  <span className="mt-3 w-fit max-w-full break-words rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-xs font-medium leading-tight text-zinc-400">
-                    {shortcut.category}
-                  </span>
+              {/* Category */}
+              <span className="mt-3 w-fit max-w-full break-words rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-xs font-medium leading-tight text-zinc-400">
+                {shortcut.category}
+              </span>
 
-                  {/* Notes */}
-                  {shortcut.notes && (
-                    <p className="mt-3 line-clamp-2 break-words text-xs leading-relaxed text-zinc-500">
-                      {shortcut.notes}
-                    </p>
-                  )}
-                </>
+              {/* Notes */}
+              {shortcut.notes && (
+                <p className="mt-3 line-clamp-2 break-words text-xs leading-relaxed text-zinc-500">
+                  {shortcut.notes}
+                </p>
               )}
             </div>
           );
         })}
 
         {/* Add shortcut */}
-        {editingId === "new" ? (
-          <div className="min-h-44 min-w-0 overflow-hidden rounded-xl border border-dashed border-zinc-800 bg-[#0d0f12] p-3 text-zinc-100 sm:p-4">
-            <ShortcutEditor
-              categories={categories}
-              onSave={saveShortcut}
-              onCancel={() => setEditingId(null)}
-            />
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setEditingId("new")}
-            className="
-              flex min-h-44 min-w-0 items-center justify-center
-              rounded-xl border border-dashed border-zinc-800
-              bg-[#101317]
-              text-zinc-600
-              transition
-              hover:border-zinc-700
-              hover:bg-[#13161a]
-              hover:text-zinc-300
-            "
-          >
-            <span className="text-4xl font-light">+</span>
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setEditingId("new")}
+          className="
+            flex min-h-44 min-w-0 items-center justify-center
+            rounded-xl border border-dashed border-zinc-800
+            bg-[#101317]
+            text-zinc-600
+            transition
+            hover:border-zinc-700
+            hover:bg-[#13161a]
+            hover:text-zinc-300
+          "
+        >
+          <span className="text-4xl font-light">+</span>
+        </button>
       </div>
 
-      {showCategoryManager && (
-        <CategoryManager
-          open={showCategoryManager}
-          onClose={() => setShowCategoryManager(false)}
-        />
+      {/* Create / edit shortcut in a centered popup so the card grid keeps its
+          shape and the form has room to breathe. */}
+      {editingId !== null && (
+        <Modal
+          centered
+          title={editingId === "new" ? "New shortcut" : "Edit shortcut"}
+          onClose={() => setEditingId(null)}
+        >
+          <ShortcutEditor
+            categories={categories}
+            shortcut={
+              editingId === "new"
+                ? undefined
+                : shortcuts.find((item) => item.id === editingId)
+            }
+            onSave={saveShortcut}
+            onDelete={editingId === "new" ? undefined : deleteShortcut}
+            onCancel={() => setEditingId(null)}
+          />
+        </Modal>
       )}
+
     </section>
   );
 }
@@ -551,11 +528,7 @@ function ShortcutEditor({ categories, shortcut, onSave, onDelete, onCancel }) {
     <form
       onSubmit={handleSubmit}
       onClick={(event) => event.stopPropagation()}
-      className="
-        flex h-full min-h-0 min-w-0
-        flex-col gap-3
-        overflow-y-auto
-      "
+      className="flex min-w-0 flex-col gap-3"
     >
       {/* Title */}
       <div className="min-w-0">
@@ -675,22 +648,6 @@ function ShortcutEditor({ categories, shortcut, onSave, onDelete, onCancel }) {
         {/* Finish / Cancel */}
         <div className="flex flex-wrap gap-2">
           <button
-            type="submit"
-            className="
-              min-w-0 flex-1
-              rounded-lg
-              bg-zinc-100
-              px-3 py-2
-              text-sm font-medium
-              text-zinc-900
-              transition
-              hover:bg-white
-            "
-          >
-            Finish
-          </button>
-
-          <button
             type="button"
             onClick={onCancel}
             className="
@@ -707,6 +664,22 @@ function ShortcutEditor({ categories, shortcut, onSave, onDelete, onCancel }) {
             "
           >
             Cancel
+          </button>
+
+          <button
+            type="submit"
+            className="
+              min-w-0 flex-1
+              rounded-lg
+              bg-zinc-100
+              px-3 py-2
+              text-sm font-medium
+              text-zinc-900
+              transition
+              hover:bg-white
+            "
+          >
+            Finish
           </button>
         </div>
 

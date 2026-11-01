@@ -5,6 +5,7 @@ import { getCategories } from "../database/categories.js";
 import {
   deleteExpense,
   deleteExpensesByRange,
+  getEarliestExpenseDate,
   getExpensesByRange,
 } from "../database/expenses.js";
 import { addCategory } from "../database/categories.js";
@@ -100,6 +101,7 @@ export function Overview() {
   const [categories, setCategories] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [previousExpenses, setPreviousExpenses] = useState([]);
+  const [allTimeStart, setAllTimeStart] = useState(null);
   const [granularityOverride, setGranularityOverride] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -146,13 +148,50 @@ export function Overview() {
     });
   }, [filters]);
 
-  const range = useMemo(
-    () =>
-      filters
-        ? getPresetRange(filters.preset, { ...filters, now: today })
-        : null,
-    [filters, today],
-  );
+  // The "All Time" preset needs the earliest recorded expense date. Fetch it
+  // lazily — only when that preset is selected — and keep the page in the
+  // skeleton state until it resolves, so the main query doesn't fire twice
+  // with an interim today→today range.
+  useEffect(() => {
+    if (filters?.preset !== "all-time") {
+      return undefined;
+    }
+
+    let active = true;
+
+    getEarliestExpenseDate()
+      .then((date) => {
+        if (active) {
+          setAllTimeStart(date ?? "");
+        }
+      })
+      .catch((loadError) => {
+        console.error("Failed to load the earliest expense date:", loadError);
+        if (active) {
+          setAllTimeStart("");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [filters?.preset, version]);
+
+  const range = useMemo(() => {
+    if (!filters) {
+      return null;
+    }
+
+    if (filters.preset === "all-time" && allTimeStart === null) {
+      return null;
+    }
+
+    return getPresetRange(filters.preset, {
+      ...filters,
+      now: today,
+      allTimeStart,
+    });
+  }, [filters, today, allTimeStart]);
 
   const startISO = range ? toISODate(range.start) : "";
   const endISO = range ? toISODate(range.end) : "";
@@ -356,6 +395,25 @@ export function Overview() {
       setDeleteAllBusy(false);
     }
   };
+
+  // Clicking anywhere other than the armed button disarms "Confirm?".
+  useEffect(() => {
+    if (confirmDeleteId === null) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (!event.target.closest(`[data-confirm-id="${confirmDeleteId}"]`)) {
+        setConfirmDeleteId(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [confirmDeleteId]);
 
   const isInitialLoading = !filters || (loading && expenses.length === 0);
   const pageCount = Math.max(1, Math.ceil(expenses.length / PAGE_SIZE));
@@ -651,6 +709,7 @@ export function Overview() {
                         </p>
                         <button
                           type="button"
+                          data-confirm-id={expense.id}
                           onClick={() => handleDelete(expense)}
                           disabled={deletingId === expense.id}
                           aria-label={`Delete ${expense.category} expense`}
@@ -733,7 +792,7 @@ export function Overview() {
                   <button
                     type="button"
                     onClick={() => setShowDeleteAllDialog(true)}
-                    disabled={deleteAllBusy}
+                    disabled={deleteAllBusy || expenses.length === 0}
                     className="rounded-lg border border-red-500/20 px-2.5 py-1 text-[11px] text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     {deleteAllBusy ? "Deleting…" : "Delete all in range"}
