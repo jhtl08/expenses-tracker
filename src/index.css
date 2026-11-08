@@ -35,3 +35,10 @@ body {
   min-width: 320px;
   background: #0d0f12;
 }
+
+/* Keep native select dropdowns on the app's dark palette. */
+select,
+select option {
+  background-color: #171a1f;
+  color: #e4e4e7;
+}

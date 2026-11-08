@@ -108,6 +108,8 @@ export function Overview() {
   const [deletingId, setDeletingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [page, setPage] = useState(0);
+  const [sortBy, setSortBy] = useState("date");
+  const [sortDir, setSortDir] = useState("desc");
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
   const [deleteAllBusy, setDeleteAllBusy] = useState(false);
   const [csvMessage, setCsvMessage] = useState("");
@@ -415,11 +417,28 @@ export function Overview() {
     };
   }, [confirmDeleteId]);
 
+  const sortedExpenses = useMemo(() => {
+    const copy = [...expenses];
+    const factor = sortDir === "asc" ? 1 : -1;
+    copy.sort((a, b) => {
+      if (sortBy === "amount") {
+        return (Number(a.amount) - Number(b.amount)) * factor;
+      }
+      // date
+      return a.date < b.date
+        ? -1 * factor
+        : a.date > b.date
+          ? 1 * factor
+          : 0;
+    });
+    return copy;
+  }, [expenses, sortBy, sortDir]);
+
   const isInitialLoading = !filters || (loading && expenses.length === 0);
-  const pageCount = Math.max(1, Math.ceil(expenses.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(sortedExpenses.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
   const pageStart = safePage * PAGE_SIZE;
-  const visibleExpenses = expenses.slice(pageStart, pageStart + PAGE_SIZE);
+  const visibleExpenses = sortedExpenses.slice(pageStart, pageStart + PAGE_SIZE);
 
   const goToPage = (nextPage) => {
     setConfirmDeleteId(null);
@@ -656,13 +675,93 @@ export function Overview() {
 
             {/* Recent transactions */}
             <section className="rounded-2xl border border-white/[0.07] bg-[#111418] p-4">
-              <div className="mb-1 flex items-center justify-between gap-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-zinc-200">
                   Transactions
                 </h2>
-                <span className="text-[11px] text-zinc-600">
-                  {overview.count} in range
-                </span>
+
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex items-center gap-0.5 rounded-full border border-white/[0.08] bg-white/[0.03] p-0.5 transition hover:border-white/[0.14]">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      className="ml-1.5 h-3.5 w-3.5 shrink-0 text-zinc-500"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M3 7h18M6 12h12M9 17h6"
+                      />
+                    </svg>
+
+                    <select
+                      aria-label="Sort by"
+                      value={sortBy}
+                      onChange={(event) => {
+                        setSortBy(event.target.value);
+                        setPage(0);
+                        setConfirmDeleteId(null);
+                      }}
+                      className="appearance-none bg-transparent py-1 pl-1 pr-1 text-[11px] font-medium text-zinc-300 outline-none"
+                      style={{ colorScheme: "dark" }}
+                    >
+                      <option
+                        value="date"
+                        className="bg-[#171a1f] text-zinc-200"
+                      >
+                        Date
+                      </option>
+                      <option
+                        value="amount"
+                        className="bg-[#171a1f] text-zinc-200"
+                      >
+                        Amount
+                      </option>
+                    </select>
+
+                    <span
+                      aria-hidden="true"
+                      className="h-4 w-px shrink-0 bg-white/[0.12]"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSortDir((current) =>
+                          current === "desc" ? "asc" : "desc",
+                        );
+                        setPage(0);
+                        setConfirmDeleteId(null);
+                      }}
+                      aria-label={`Sort ${sortDir === "desc" ? "ascending" : "descending"}`}
+                      className="flex h-6 w-6 items-center justify-center rounded-full text-zinc-400 transition hover:bg-white/[0.08] hover:text-zinc-100"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        className={`h-3 w-3 transition-transform ${
+                          sortDir === "asc" ? "rotate-180" : ""
+                        }`}
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M6 9l6 6 6-6"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <span className="text-[11px] tabular-nums text-zinc-600">
+                    {overview.count} in range
+                  </span>
+                </div>
               </div>
 
               {csvMessage && (
